@@ -1,0 +1,89 @@
+######Linear Regression##########
+
+##Combining Income and PM2.5
+step.5 <- extract(r_idw, income.tracts, fun = mean, sp = TRUE)
+pm.income.poly<-step.5
+
+#Notice that there are a lot of 0's in this dataset. If you decide to remove them, use the following line:
+pm.income.poly <-  pm.income.poly[!is.na(pm.income.poly$var1.pred), ]
+#Now plot the data again
+plot(pm.income.poly$Income~pm.income.poly$var1.pred)
+
+#Perform a linear regression on the two variables. You should decide which one is dependent.
+lm.model <- lm(pm.income.poly$Income~pm.income.poly$var1.pred)
+#Add the regression model to the plot you created
+abline(lm.model)
+#Get the summary of the results
+summary(lm.model)
+
+#You want to determine if the model residuals are spatially clustered. 
+#First obtain the residuals from the model
+model.resids <- as.data.frame(residuals.lm(lm.model))
+#Then add the residuals to your spatialpolygon dataframe
+pm.income.poly$residuals <- residuals.lm(lm.model)
+#Observe the result to make sure it looks correct
+head(pm.income.poly)
+
+View(pm.income.poly@data)
+
+#Now, create choropleth map of residuals
+resids <- pm.income.poly$residuals
+shades <- auto.shading(resids, n=6, cols = brewer.pal(6, 'Greens'))
+choropleth(income.tracts, resids, shades) #map the data with associated colours
+choro.legend(-123.598889, 49.195833, shades) #add a legend (you might need to change the location)
+title("Map of linear regression residuals")
+
+#GLOBAL AND LOCAL MORAN'S I
+van.data<-pm.income.poly
+
+van.nb <- poly2nb(van.data)
+van.net <- nb2lines(van.nb,coords=coordinates(van.data))
+
+tm_shape(van.data) + tm_borders(col='black') + 
+  tm_shape(van.net) + tm_lines(col='red')
+
+########################
+
+van.lw <- nb2listw(van.nb, zero.policy = TRUE, style = "W")
+print.listw(van.lw, zero.policy = TRUE)
+
+#View(Van.data@data)
+########################
+
+mi <- moran.test(van.data$residuals, van.lw, zero.policy = TRUE)
+
+moran.range <- function(lw) {
+  wmat <- listw2mat(lw)
+  return(range(eigen((wmat + t(wmat))/2)$values))
+}
+moran.range(van.lw)
+
+
+mI <- mi$estimate[[1]]
+eI <- mi$estimate[[2]]
+var <- mi$estimate[[3]]
+
+z <- (mI - eI) / sqrt(var)
+
+########################  
+
+lisa.test <- localmoran(van.data$residuals, van.lw)
+
+van.data$Ii <- lisa.test[,1]
+van.data$E.Ii<- lisa.test[,2]
+van.data$Var.Ii<- lisa.test[,3]
+van.data$Z.Ii<- lisa.test[,4]
+van.data$P<- lisa.test[,5]
+########################
+
+
+map_LISA <- tm_shape(van.data) + 
+  tm_polygons(col = "Z.Ii", 
+              title = "Z-values from LISA", 
+              style = "fisher", 
+              palette = "viridis", n = 6) 
+
+map_LISA
+########################
+
+
