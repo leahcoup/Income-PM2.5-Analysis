@@ -1,0 +1,123 @@
+
+#GLOBAL AND LOCAL MORAN'S I for Income
+
+van.data<-income.tracts
+
+van.nb <- poly2nb(van.data)
+van.net <- nb2lines(van.nb,coords=coordinates(van.data))
+
+
+tm_shape(van.data) + tm_borders(col='black') + 
+  tm_shape(van.net) + tm_lines(col='red')
+
+van.lw <- nb2listw(van.nb, zero.policy = TRUE, style = "W")
+print.listw(van.lw, zero.policy = TRUE)
+
+mi <- moran.test(van.data$Income, van.lw, zero.policy = TRUE)
+
+
+moran.range <- function(lw) {
+  wmat <- listw2mat(lw)
+  return(range(eigen((wmat + t(wmat))/2)$values))
+}
+moran.range(van.lw)
+
+
+mI <- mi$estimate[[1]]
+eI <- mi$estimate[[2]]
+var <- mi$estimate[[3]]
+
+z <- (mI - eI) / sqrt(var)
+
+
+lisa.test <- localmoran(van.data$Income, van.lw)
+
+van.data$Ii <- lisa.test[,1]
+van.data$E.Ii<- lisa.test[,2]
+van.data$Var.Ii<- lisa.test[,3]
+van.data$Z.Ii<- lisa.test[,4]
+van.data$P<- lisa.test[,5]
+
+
+map_LISA <- tm_shape(van.data) + 
+  tm_polygons(col = "Z.Ii", 
+              title = "Z-values from LISA ", 
+              style = "fisher", 
+              palette = "viridis", n = 6) 
+
+
+map_LISA
+
+##IDW
+
+
+proj4string(grd) <- proj4string(spSample) #borrow projection from monitoring stations.
+
+P.idw <- gstat::idw (PM25AGG ~ 1, spSample, newdata=grd, idp=2.0) #send to grid, use data for interp, 2.0 is the power function. You can play around with this number)
+r_idw       <- raster(P.idw)
+#r.m     <- mask(r, SC.AirBasin.t)
+
+dev.off()
+
+tm_shape(r_idw) + 
+  tm_raster(n=10,palette = "Reds",
+            title="Predicted PM25 \n(in ppm)") + 
+  tm_shape(spSample) + tm_dots(size=0.2) +
+  tm_legend(legend.outside=TRUE)
+
+##Leave-one-out Validation Routine
+IDW.out <- vector(length = length(spSample))
+for (i in 1:length(spSample)) {
+  IDW.out[i] <- gstat::idw(PM25AGG ~ 1, spSample[-i,], spSample[i,], idp=2)$var1.pred
+}
+#Now we have observations and predictions at those location
+# Plot the differences. can use linear regression to see how well. if perfect mathc, points would fall along the diagonal line
+OP <- par(pty="s", mar=c(4,3,0,0))
+plot(IDW.out ~ spSample$PM25AGG, asp=1, xlab="Observed", ylab="Predicted", pch=16,
+     col=rgb(0,0,0,0.5))
+abline(lm(IDW.out ~ spSample$PM25AGG), col="red", lw=2,lty=2)
+abline(0,1)
+par(OP)
+sqrt( sum((IDW.out - ospSample$PM25AGG)^2) / length(spSample)) #root mean squared error. at power function 1/2, RMSE is 0.00426
+
+
+#################################################
+# Implementation of a jackknife technique to estimate a confidence interval at each unsampled point.
+#Instead of looking at dif between obs and pred. Jacknife is looking at confience intervals.
+# Create the interpolated surface
+img <- gstat::idw(PM25AGG~1, spSample, newdata=grd, idp=2.0)
+n   <- length(spSample)
+Zi  <- matrix(nrow = length(img$var1.pred), ncol = n)
+
+
+# Remove a point then interpolate (do this n times for each point)
+st <- stack()
+for (i in 1:n){
+  Z1 <- gstat::idw(PM25AGG~1, spSample[-i,], newdata=grd, idp=2.0)
+  st <- addLayer(st,raster(Z1,layer=1))
+  # Calculated pseudo-value Z at j
+  Zi[,i] <- n * img$var1.pred - (n-1) * Z1$var1.pred
+}
+
+# Jackknife estimator of parameter Z at location j
+Zj <- as.matrix(apply(Zi, 1, sum, na.rm=T) / n )
+
+# Compute (Zi* - Zj)^2
+c1 <- apply(Zi,2,'-',Zj)            # Compute the difference
+c1 <- apply(c1^2, 1, sum, na.rm=T ) # Sum the square of the difference
+
+# Compute the confidence interval
+CI <- sqrt( 1/(n*(n-1)) * c1)
+
+# Create (CI / interpolated value) raster
+img.sig   <- img
+img.sig$v <- CI /img$var1.pred 
+
+# Clip the confidence raster to Southern California
+r <- raster(img.sig, layer="v")
+#r.m <- mask(r, SC.AirBasin.t)
+
+# Plot the map. These are no longer predictions, they are our confidence intervals.
+tm_shape(r) + tm_raster(n=7,title="95% confidence interval \n(in ppm)") +
+  tm_shape(spSample) + tm_dots(size=0.2) +
+  tm_legend(legend.outside=TRUE)
