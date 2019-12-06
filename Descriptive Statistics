@@ -1,0 +1,65 @@
+#DESCRIPTIVE STATS 
+meanPM25 <- mean(pm.income.poly$var1.pred)
+meanInc <- mean(pm.income.poly$Income)
+sdPM25 <- sd(pm.income.poly$var1.pred, na.rm = TRUE)
+sdInc <- sd(pm.income.poly$Income, na.rm = TRUE)
+medPM25 <- median(pm.income.poly$var1.pred, na.rm = TRUE)
+medInc <- median(pm.income.poly$Income, na.rm = TRUE)
+modePM25 <- as.numeric(names(sort(table(pm.income.poly$var1.pred), decreasing = TRUE))[1])
+modeInc <- as.numeric(names(sort(table(pm.income.poly$Income), decreasing = TRUE))[1])
+skewPM25 <- skewness(pm.income.poly$var1.pred, na.rm = TRUE)[1]
+skewInc <- skewness(pm.income.poly$Income, na.rm = TRUE)[1]
+kurtPM25 <- kurtosis(pm.income.poly$var1.pred, na.rm = TRUE)[1]
+kurtInc <- kurtosis(pm.income.poly$Income, na.rm = TRUE)[1]
+CoVPM25 <- (sdPM25 / meanPM25) * 100
+CoVInc <- (sdInc / meanInc) * 100
+
+
+normPM25_PVAL <- shapiro.test(pm.income.poly$var1.pred)$p.value
+normInc_PVAL <- shapiro.test(pm.income.poly$Income)$p.value
+
+
+samples = c("PM25", "Income") #Create an object for the labels
+means = c(meanPM25, meanInc) #Create an object for the means
+sd = c(sdPM25, sdInc) #Create an object for the standard deviations
+median = c(medPM25, medInc) #Create an object for the medians
+mode <- c(modePM25, modeInc) #Create an object for the modes
+skewness <- c(skewPM25, skewInc) #Create an object for the skewness
+kurtosis <- c(kurtPM25, kurtInc) #Create an object for the kurtosis
+CoV <- c(CoVPM25, CoVInc) #Create an object for the CoV
+normality <- c(normPM25_PVAL, normInc_PVAL) #Create an object for the normality PVALUE
+
+
+data.for.table1 = data.frame(samples,means,median,mode)
+data.for.table2 = data.frame(samples,skewness,kurtosis,CoV,normality)
+
+table1 <- tableGrob(data.for.table1, rows = c("","")) #make a table "Graphical Object" (GrOb) 
+t1Caption <- textGrob("Table 1: Descriptive statistics of PM25 and Income values in Vancouver, BC 2016.", gp = gpar(fontsize = 08))
+padding <- unit(5, "mm")
+
+table1 <- gtable_add_rows(table1, 
+                          heights = grobHeight(t1Caption) + padding, 
+                          pos = 0)
+table1 <- gtable_add_grob(table1,
+                          t1Caption, t = 1, l = 2, r = ncol(data.for.table1) + 1)
+table2 <- tableGrob(data.for.table2, rows = c("",""))
+t2Caption <- textGrob("Table 2: Descriptive statistics of PM25 and Income values in Vancouver, BC 2016.", gp = gpar(fontsize = 09))
+padding <- unit(5, "mm")
+
+table2 <- gtable_add_rows(table2, 
+                          heights = grobHeight(t2Caption) + padding, 
+                          pos = 0)
+
+table2 <- gtable_add_grob(table2,
+                          t2Caption, t = 1, l = 2, r = ncol(data.for.table2) + 1)
+grid.arrange(table1, newpage = TRUE)
+grid.arrange(table2, newpage = TRUE)
+
+#Printing a table (You can use the same setup for printing other types of objects (see ?png))
+png("Output_Table1.png") #Create an object to print the table to
+grid.arrange(table1, newpage = TRUE)
+dev.off() #Print table
+
+png("Output_Table2.png") #Create an object to print the table to
+grid.arrange(table2, newpage = TRUE) #Create table
+dev.off()
