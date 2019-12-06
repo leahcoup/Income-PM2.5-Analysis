@@ -1,0 +1,188 @@
+
+#Point Pattern Analysis
+
+spSample<-spTransform(spSample, CRS("+init=epsg:3005"))
+
+income.tracts<-spTransform(income.tracts, CRS("+init=epsg:3005"))
+
+kma <- spSample 
+
+kma$x <- coordinates(kma)[,1]
+
+kma$y <- coordinates(kma)[,2]
+
+#finds zero distance among points
+
+zd <- zerodist(kma)
+
+zd
+
+#remove duplicates
+
+kma <- remove.duplicates(kma)
+
+
+
+#create an "extent" object which can be used to create the observation window for spatstat
+
+kma.ext <- as.matrix(extent(kma))
+
+
+
+#observation window
+
+window <- as.owin(list(xrange = kma.ext[1,], yrange = kma.ext[2,]))
+
+
+
+#create ppp oject from spatstat
+
+kma.ppp <- ppp(x = kma$x, y = kma$y, window = window)
+
+
+
+nrow (kma)
+
+
+#####
+
+##Nearest Neighbour Distance
+
+nearestNeighbour <- nndist(kma.ppp)
+
+
+
+##Convert the nearestNeighbor object into a dataframe.
+
+nearestNeighbour=as.data.frame(as.numeric(nearestNeighbour))
+
+##Change the column name to "Distance"
+
+colnames(nearestNeighbour) = "Distance"
+
+
+
+##Calculate the nearest neighbor statistic to test for a random spatial distribution.
+
+#mean nearest neighbour
+
+
+N <-140
+nnd = (sum(nearestNeighbour$distance))/N
+
+
+
+#mean nearest neighbour for random spatial distribution
+
+
+
+studyArea <-gArea(spgeom=income.tracts, byid=FALSE)
+
+pointDensity <- N / studyArea
+pointDensity
+
+
+r.nnd = 1 / (2*sqrt(pointDensity))
+r.nnd
+
+
+d.nnd = 1.07453/ sqrt(pointDensity)
+d.nnd
+
+
+R = nnd / r.nnd
+R
+
+
+SE.NND <- .26136 / sqrt (N * pointDensity)
+SE.NND
+
+
+z = (nnd - r.nnd) / SE.NND
+z
+#kernel density
+#to calclate study area-reproect polygon 
+
+
+#####
+
+###KERNEL DENSITY ESTIMATION
+
+#2D (gaussian) kernel, compare how bandwidth (sigma) selection influences the point density estimates
+
+#since data are projected, sigma is represented in metres
+
+#eps is the width and height of the pixels (1000m X 1000m)
+
+#coerce to a SpatialGridDataFrame for plotting
+
+kde.100 <- density(kma.ppp, sigma = 100, at = "pixels", eps = c(100, 100))
+
+kde.SG <- as(kde.100, "SpatialGridDataFrame")
+
+kde.500 <- density(kma.ppp, sigma = 500, at = "pixels", eps = c(100, 100))
+
+kde.SG <- cbind(kde.SG, as(kde.500, "SpatialGridDataFrame"))
+
+
+
+
+
+kde.250 <- density(kma.ppp, sigma = 250, at = "pixels", eps = c(100,100))
+
+kde.SG <- cbind(kde.SG, as(kde.250, "SpatialGridDataFrame"))
+
+
+kde.50 <- density(kma.ppp, sigma = 50, at = "pixels", eps = c(100, 100))
+
+kde.SG <- cbind(kde.SG, as(kde.50, "SpatialGridDataFrame"))
+
+
+
+names(kde.SG) <- c("kde.100m", "kde.500m", "kde.250m", "kde.50m")
+
+
+#plot
+
+x11() #opens a new plot window
+
+spplot(kde.SG)
+
+
+#can see how the bandwidth selection influences the density estimates
+
+summary(kde.SG)
+
+
+
+#use cross-validation to get the bandwidth that minimizes MSE
+
+bw.d <- bw.diggle(kma.ppp)
+
+#plot the "optimal" bandwidth
+
+plot(bw.d, ylim=c(-10, 10), main= "Bandwidth")
+
+
+
+#density using the cross-validation bandwidth
+
+kde.bwo <- density(kma.ppp, sigma = bw.d, at = "pixels", eps = c(100, 100))
+
+plot(kde.bwo)
+
+
+
+color=heat.colors(100, alpha=1, rev=TRUE)
+
+hood_colors<-grey.colors(n=1, alpha=0.2)
+
+
+
+par(oma=c(1,1,3,1))
+
+plot(kde.bwo, col=color)
+
+mtext("Density (points/m^2)", side=4, line=6)
+
+plot(income.tracts, col=hood_colors, add=TRUE)
